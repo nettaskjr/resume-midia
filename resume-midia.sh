@@ -5,22 +5,10 @@
 # Uso: ./resume-midia.sh [opções] arquivo.mp4
 # ---------------------------------------------------------
 
-## --- Configurações dos Provedores ---
-
-# LM Studio (local)
-LMSTUDIO_URL="http://127.0.0.1:1234/v1/chat/completions"
-LMSTUDIO_MODEL="local-model"
-
-# OpenAI (ChatGPT)
-OPENAI_URL="https://api.openai.com/v1/chat/completions"
-OPENAI_MODEL="gpt-4o" # ou gpt-3.5-turbo, gpt-4-turbo, etc.
-
-# Google (Gemini)
-GEMINI_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
-
 ## --- Variáveis Globais ---
-PROVIDER="lmstudio" # Padrão: lmstudio, chatgpt, gemini
 ARQUIVO=""
+PROVIDER="" # Será definido a partir do config.json
+CONFIG_FILE="config.json"
 
 mostrar_ajuda() {
   echo "Uso: $0 [opções] <arquivo>"
@@ -37,6 +25,31 @@ mostrar_ajuda() {
   echo "  $0 --provider chatgpt audio.mp3"
   echo "  $0 --provider gemini aula.wav"
 }
+
+# --- Carregamento de Configurações ---
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Erro: Arquivo de configuração '$CONFIG_FILE' não encontrado." >&2
+    echo "Copie 'config.json.example' para '$CONFIG_FILE' e preencha com suas chaves de API." >&2
+    exit 1
+fi
+
+# Ler configurações do JSON usando jq
+PROVIDER=$(jq -r '.default_provider' "$CONFIG_FILE")
+LMSTUDIO_URL=$(jq -r '.providers.lmstudio.url' "$CONFIG_FILE")
+LMSTUDIO_MODEL=$(jq -r '.providers.lmstudio.model' "$CONFIG_FILE")
+OPENAI_URL=$(jq -r '.providers.chatgpt.url' "$CONFIG_FILE")
+OPENAI_MODEL=$(jq -r '.providers.chatgpt.model' "$CONFIG_FILE")
+OPENAI_API_KEY=$(jq -r '.providers.chatgpt.api_key' "$CONFIG_FILE")
+GEMINI_URL=$(jq -r '.providers.gemini.url' "$CONFIG_FILE")
+GEMINI_API_KEY=$(jq -r '.providers.gemini.api_key' "$CONFIG_FILE")
+
+# Verifica se o provedor padrão foi carregado corretamente
+if [ -z "$PROVIDER" ] || [ "$PROVIDER" = "null" ]; then
+    echo "Erro: A chave 'default_provider' não está definida ou é nula em '$CONFIG_FILE'." >&2
+    # Define um fallback para garantir que o script não quebre
+    PROVIDER="lmstudio"
+    echo "Usando 'lmstudio' como fallback."
+fi
 
 # --- Processamento de Argumentos ---
 while [ "$#" -gt 0 ]; do
@@ -68,17 +81,19 @@ for cmd in ffmpeg whisper curl jq; do
   fi
 done
 
-# Verificação de chaves de API
-if [ "$PROVIDER" = "chatgpt" ] && [ -z "$OPENAI_API_KEY" ]; then
-    echo "Erro: A variável de ambiente OPENAI_API_KEY não está definida." >&2
-    echo "Exporte sua chave antes de executar: export OPENAI_API_KEY='sk-...'" >&2
-    exit 1
+# Verificação de chaves de API lidas do JSON
+if [ "$PROVIDER" = "chatgpt" ]; then
+    if [ -z "$OPENAI_API_KEY" ] || [ "$OPENAI_API_KEY" = "SUA_CHAVE_OPENAI_AQUI" ]; then
+        echo "Erro: A chave de API do ChatGPT não está configurada em '$CONFIG_FILE'." >&2
+        exit 1
+    fi
 fi
 
-if [ "$PROVIDER" = "gemini" ] && [ -z "$GEMINI_API_KEY" ]; then
-    echo "Erro: A variável de ambiente GEMINI_API_KEY não está definida." >&2
-    echo "Exporte sua chave antes de executar: export GEMINI_API_KEY='...'" >&2
-    exit 1
+if [ "$PROVIDER" = "gemini" ]; then
+    if [ -z "$GEMINI_API_KEY" ] || [ "$GEMINI_API_KEY" = "SUA_CHAVE_GEMINI_AQUI" ]; then
+        echo "Erro: A chave de API do Gemini não está configurada em '$CONFIG_FILE'." >&2
+        exit 1
+    fi
 fi
 
 BASE="${ARQUIVO%.*}"
@@ -205,7 +220,7 @@ EOP
 
 # ------------ 4) Chamada ao LM Studio ------------
 
-echo ">> [4/4] Enviando para o provedor '$PROVIDER'..."
+echo ">> [4/4] Enviando para o provedor '$PROVIDER' via API..."
 echo "   Resposta bruta será salva em: $API_RAW"
 
 RESPOSTA=""
@@ -284,5 +299,5 @@ echo "$CONTEUDO" > "$TXT_SAIDA"
 echo ">> PRONTO!"
 echo "Arquivos gerados:"
 echo "  - Transcrição: $TXT_TRANSCRICAO"
-echo "  - Resumo + 10 questões: $TXT_SAIDA"
+echo "  - Resumo + Questões: $TXT_SAIDA"
 echo "  - Resposta bruta da API: $API_RAW"
