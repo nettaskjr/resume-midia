@@ -10,7 +10,7 @@ Este script em Shell (`resume-midia.sh`) automatiza o processo de processar um a
 
 -   📄 **Suporte a Múltiplos Formatos**: Processa arquivos de áudio, vídeo e **texto (.txt)**.
 -   🔊 **Extração de Áudio**: Converte automaticamente arquivos de vídeo (mp4, mkv, etc.) ou áudio para o formato WAV.
--   ✍️ **Transcrição Automática**: Utiliza o Whisper para gerar uma transcrição precisa do conteúdo de áudio/vídeo.
+-   ✍️ **Transcrição em Tempo Real**: Utiliza o Whisper para gerar uma transcrição precisa, exibindo o progresso e o texto no terminal durante a execução.
 -   🧠 **Suporte a Múltiplos LLMs**: Integra-se com diferentes provedores de IA:
     -   **LM Studio** (para modelos locais)
     -   **ChatGPT** (via API da OpenAI)
@@ -19,7 +19,7 @@ Este script em Shell (`resume-midia.sh`) automatiza o processo de processar um a
     -   Cria um resumo conciso do material.
     -   Gera um número personalizável de perguntas de múltipla escolha, verdadeiro/falso e de completar lacunas.
 -   ⚙️ **Configuração Flexível**: Todas as chaves de API, modelos e endpoints são gerenciados através de um arquivo `config.json`.
--   🔍 **Listagem de Modelos**: Permite listar os modelos disponíveis na API do Gemini para facilitar a configuração.
+-   🔍 **Listagem de Modelos**: Permite listar os modelos disponíveis para as APIs do **ChatGPT** e **Gemini**.
 
 ---
 
@@ -98,6 +98,17 @@ No `config.json`, você pode definir qual provedor será usado por padrão alter
 ```json
 "default_provider": "chatgpt"
 ```
+
+### Passo 4: Definir o modelo do Whisper
+
+Esta configuração é importante para balancear velocidade e precisão. Modelos menores (tiny, base) são mais rápidos e exigem menos recursos, mas podem ser menos precisos. Modelos maiores (small, medium, large) oferecem maior precisão, mas a transcrição levará mais tempo e consumirá mais memória/CPU. 
+
+No `config.json`, você pode definir qual modelo será usado para transcrever o áudio.`whisper_model`. As opções são `"tiny"`, `"base"`, `"small"`, `"medium"` ou `"large"`.
+
+```json
+"whisper_model": "base"
+```
+
 
 ## 3. Como Usar
 
