@@ -1,25 +1,61 @@
 #!/bin/bash
 
 # ---------------------------------------------------------
-# Script: Áudio/Vídeo -> Whisper -> LM Studio (resumo + 10 questões)
-# Uso: ./processar_aula_lmstudio.sh aula.mp4
-#      ./processar_aula_lmstudio.sh aula.mp3
-#      ./processar_aula_lmstudio.sh aula.wav
+# Script: Áudio/Vídeo -> Whisper -> LLM (resumo + 10 questões)
+# Uso: ./resume-midia.sh [opções] arquivo.mp4
 # ---------------------------------------------------------
 
-# Endereço do servidor local do LM Studio (OpenAI compatible)
-LM_URL="http://127.0.0.1:1234/v1/chat/completions"
-LM_MODEL="local-model"  # nome simbólico; LM Studio normalmente ignora ou aceita qualquer string
+## --- Configurações dos Provedores ---
 
-if [ -z "$1" ]; then
-    echo "Uso: $0 arquivo.(mp4|mkv|mp3|wav|m4a|outros)"
+# LM Studio (local)
+LMSTUDIO_URL="http://127.0.0.1:1234/v1/chat/completions"
+LMSTUDIO_MODEL="local-model"
+
+# OpenAI (ChatGPT)
+OPENAI_URL="https://api.openai.com/v1/chat/completions"
+OPENAI_MODEL="gpt-4o" # ou gpt-3.5-turbo, gpt-4-turbo, etc.
+
+# Google (Gemini)
+GEMINI_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
+
+## --- Variáveis Globais ---
+PROVIDER="lmstudio" # Padrão: lmstudio, chatgpt, gemini
+ARQUIVO=""
+
+mostrar_ajuda() {
+  echo "Uso: $0 [opções] <arquivo>"
+  echo
+  echo "Processa um arquivo de áudio/vídeo para gerar uma transcrição, um resumo e 10 questões de múltipla escolha."
+  echo
+  echo "Opções:"
+  echo "  --provider [serviço]   Define o provedor de LLM a ser usado. Padrão: lmstudio."
+  echo "                           Opções disponíveis: lmstudio, chatgpt, gemini."
+  echo "  -h, --help             Mostra esta mensagem de ajuda."
+  echo
+  echo "Exemplos:"
+  echo "  $0 video.mp4"
+  echo "  $0 --provider chatgpt audio.mp3"
+  echo "  $0 --provider gemini aula.wav"
+}
+
+# --- Processamento de Argumentos ---
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --provider) PROVIDER="$2"; shift 2 ;;
+        -h|--help) mostrar_ajuda; exit 0 ;;
+        -*) echo "Opção desconhecida: $1"; mostrar_ajuda; exit 1 ;;
+        *) ARQUIVO="$1"; shift 1 ;;
+    esac
+done
+
+if [ -z "$ARQUIVO" ]; then
+    echo "Erro: Nenhum arquivo de entrada especificado."
+    mostrar_ajuda
     exit 1
 fi
 
-ARQUIVO="$1"
-
 if [ ! -f "$ARQUIVO" ]; then
-    echo "Erro: Arquivo '$ARQUIVO' não encontrado."
+    echo "Erro: Arquivo '$ARQUIVO' não encontrado." >&2
     exit 1
 fi
 
@@ -27,10 +63,23 @@ fi
 for cmd in ffmpeg whisper curl jq; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Erro: comando '$cmd' não encontrado no sistema: $cmd"
-    echo "Instale-o antes de continuar."
+    echo "Instale-o antes de continuar." >&2
     exit 1
   fi
 done
+
+# Verificação de chaves de API
+if [ "$PROVIDER" = "chatgpt" ] && [ -z "$OPENAI_API_KEY" ]; then
+    echo "Erro: A variável de ambiente OPENAI_API_KEY não está definida." >&2
+    echo "Exporte sua chave antes de executar: export OPENAI_API_KEY='sk-...'" >&2
+    exit 1
+fi
+
+if [ "$PROVIDER" = "gemini" ] && [ -z "$GEMINI_API_KEY" ]; then
+    echo "Erro: A variável de ambiente GEMINI_API_KEY não está definida." >&2
+    echo "Exporte sua chave antes de executar: export GEMINI_API_KEY='...'" >&2
+    exit 1
+fi
 
 BASE="${ARQUIVO%.*}"
 EXT="${ARQUIVO##*.}"
@@ -39,10 +88,11 @@ EXT_LOWER="${EXT,,}"   # deixa extensão minúscula (bash 4+)
 WAV="${BASE}.wav"
 TXT_TRANSCRICAO="${BASE}.txt"
 TXT_SAIDA="${BASE}_resumo_questoes.txt"
-API_RAW="${BASE}_lmstudio_raw.json"
+API_RAW="${BASE}_${PROVIDER}_raw.json"
 
 echo ">> Arquivo de entrada: $ARQUIVO"
 echo ">> Extensão detectada: .$EXT_LOWER"
+echo ">> Provedor LLM: $PROVIDER"
 echo ">> Base: $BASE"
 
 # ------------ 1) Extrair / preparar áudio ------------
@@ -54,7 +104,7 @@ else
     echo ">> [1/4] Extraindo/convetendo áudio com ffmpeg (mono, 16kHz)..."
     ffmpeg -i "$ARQUIVO" -ac 1 -ar 16000 "$WAV" -y
     if [ $? -ne 0 ]; then
-        echo "Erro ao extrair/convertar áudio com ffmpeg."
+        echo "Erro ao extrair/converter áudio com ffmpeg." >&2
         exit 1
     fi
     echo ">> Áudio gerado: $WAV"
@@ -66,12 +116,12 @@ echo ">> [2/4] Transcrevendo áudio com Whisper (modelo base, pt)..."
 echo "   (na primeira vez ele pode baixar o modelo; pode demorar um pouco)"
 whisper "$WAV" --model base --language pt --task transcribe
 if [ $? -ne 0 ]; then
-    echo "Erro: whisper falhou."
+    echo "Erro: whisper falhou." >&2
     exit 1
 fi
 
 if [ ! -f "$TXT_TRANSCRICAO" ]; then
-    echo "Erro: transcrição '$TXT_TRANSCRICAO' não foi gerada."
+    echo "Erro: transcrição '$TXT_TRANSCRICAO' não foi gerada." >&2
     exit 1
 fi
 echo ">> Transcrição gerada: $TXT_TRANSCRICAO"
@@ -80,7 +130,23 @@ TRANSCRICAO=$(cat "$TXT_TRANSCRICAO")
 
 # ------------ 3) Montar prompt ------------
 
-echo ">> [3/4] Montando prompt para o modelo local (LM Studio)..."
+echo ">> [3/4] Configurando a geração de perguntas..."
+
+read -p "Quantas perguntas você deseja gerar? (padrão: 10): " TOTAL_QUESTOES
+TOTAL_QUESTOES=${TOTAL_QUESTOES:-10} # Se vazio, usa 10
+
+# Calcula a quantidade de questões por tipo (40% ME, 30% VF, 30% CL)
+# Usamos awk para aritmética de ponto flutuante e printf para arredondar
+QTD_ME=$(printf "%.0f" $(awk "BEGIN {print $TOTAL_QUESTOES * 0.4}"))
+QTD_VF=$(printf "%.0f" $(awk "BEGIN {print $TOTAL_QUESTOES * 0.3}"))
+QTD_CL=$(printf "%.0f" $(awk "BEGIN {print $TOTAL_QUESTOES * 0.3}"))
+
+# Ajusta a soma para garantir que o total seja o solicitado
+SOMA_ATUAL=$((QTD_ME + QTD_VF + QTD_CL))
+DIFERENCA=$((TOTAL_QUESTOES - SOMA_ATUAL))
+QTD_ME=$((QTD_ME + DIFERENCA)) # Adiciona a diferença à categoria principal
+
+echo ">> Montando prompt com $TOTAL_QUESTOES perguntas ($QTD_ME Múltipla Escolha, $QTD_VF Verdadeiro/Falso, $QTD_CL Completar Lacuna)..."
 
 read -r -d '' PROMPT << EOP
 Você é um professor.
@@ -88,12 +154,12 @@ Abaixo está a transcrição de um vídeo/aula.
 
 1) Primeiro, faça um RESUMO claro e objetivo do conteúdo em português (máximo de 3 parágrafos).
 
-2) Em seguida, crie AO TODO 10 perguntas para testar o conhecimento do aluno, obedecendo exatamente a esta distribuição:
-  - 4 questões de MÚLTIPLA ESCOLHA
-  - 3 questões de VERDADEIRO ou FALSO
-  - 3 questões de COMPLETAR LACUNAS
+2) Em seguida, crie AO TODO $TOTAL_QUESTOES perguntas para testar o conhecimento do aluno, obedecendo exatamente a esta distribuição:
+  - $QTD_ME questões de MÚLTIPLA ESCOLHA
+  - $QTD_VF questões de VERDADEIRO ou FALSO
+  - $QTD_CL questões de COMPLETAR LACUNAS
 
-3) As 10 questões devem vir MISTURADAS, não agrupe por tipo. Embaralhe a ordem das questões.
+3) As $TOTAL_QUESTOES questões devem vir MISTURADAS, não agrupe por tipo. Embaralhe a ordem das questões.
 
 4) Formato obrigatório de saída:
 
@@ -115,17 +181,17 @@ Tipo: ...
 
 Regras específicas por tipo:
 
-- MÚLTIPLA ESCOLHA (4 questões):
+- MÚLTIPLA ESCOLHA ($QTD_ME questões):
   * Sempre 4 alternativas: A, B, C, D.
   * Apenas UMA alternativa correta.
   * Escreva no final: "Resposta correta: X" (onde X é A, B, C ou D).
 
-- VERDADEIRO OU FALSO (3 questões):
+- VERDADEIRO OU FALSO ($QTD_VF questões):
   * Não use alternativas A, B, C, D.
   * O enunciado deve poder ser julgado como verdadeiro ou falso.
   * Escreva no final: "Resposta correta: Verdadeiro" ou "Resposta correta: Falso".
 
-- COMPLETAR LACUNAS (3 questões):
+- COMPLETAR LACUNAS ($QTD_CL questões):
   * O enunciado deve conter uma ou mais lacunas sinalizadas por "____".
   * Não use alternativas A, B, C, D.
   * No final, escreva: "Resposta correta: [texto que completa a lacuna]".
@@ -139,43 +205,77 @@ EOP
 
 # ------------ 4) Chamada ao LM Studio ------------
 
-echo ">> [4/4] Enviando para o LM Studio em $LM_URL ..."
+echo ">> [4/4] Enviando para o provedor '$PROVIDER'..."
 echo "   Resposta bruta será salva em: $API_RAW"
 
-JSON_PAYLOAD=$(jq -n --arg sys "Você é um assistente especializado em educação." \
-                    --arg prompt "$PROMPT" \
-                    --arg model "$LM_MODEL" \
-    '{
-        model: $model,
-        messages: [
-          {role: "system", content: $sys},
-          {role: "user", content: $prompt}
-        ]
-      }')
+RESPOSTA=""
 
-RESPOSTA=$(curl -s "$LM_URL" \
-  -H "Content-Type: application/json" \
-  -d "$JSON_PAYLOAD")
+case "$PROVIDER" in
+  "lmstudio")
+    JSON_PAYLOAD=$(jq -n --arg sys "Você é um assistente especializado em educação." \
+                        --arg prompt "$PROMPT" \
+                        --arg model "$LMSTUDIO_MODEL" \
+        '{model: $model, messages: [{role: "system", content: $sys}, {role: "user", content: $prompt}]}')
+    RESPOSTA=$(curl -s "$LMSTUDIO_URL" -H "Content-Type: application/json" -d "$JSON_PAYLOAD")
+    ;;
+
+  "chatgpt")
+    JSON_PAYLOAD=$(jq -n --arg sys "Você é um assistente especializado em educação." \
+                        --arg prompt "$PROMPT" \
+                        --arg model "$OPENAI_MODEL" \
+        '{model: $model, messages: [{role: "system", content: $sys}, {role: "user", content: $prompt}]}')
+    RESPOSTA=$(curl -s "$OPENAI_URL" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $OPENAI_API_KEY" \
+      -d "$JSON_PAYLOAD")
+    ;;
+
+  "gemini")
+    JSON_PAYLOAD=$(jq -n --arg prompt "$PROMPT" \
+      '{contents: [{parts: [{text: $prompt}]}]}')
+    RESPOSTA=$(curl -s "$GEMINI_URL?key=$GEMINI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "$JSON_PAYLOAD")
+    ;;
+
+  *)
+    echo "Erro: Provedor '$PROVIDER' desconhecido." >&2
+    exit 1
+    ;;
+esac
 
 # Salvar resposta bruta (para debug)
 echo "$RESPOSTA" > "$API_RAW"
 
-# Tentar detectar erro no formato OpenAI-like
-ERROR_MSG=$(echo "$RESPOSTA" | jq -r '.error.message' 2>/dev/null || echo "")
+# Tentar detectar erro na resposta da API
+ERROR_MSG=""
+if [ "$PROVIDER" = "gemini" ]; then
+    # Gemini pode retornar erro no campo 'error' ou um 'promptFeedback'
+    ERROR_MSG=$(echo "$RESPOSTA" | jq -r '.error.message // .promptFeedback.blockReason' 2>/dev/null | grep -v "null")
+else
+    # Formato OpenAI-like (LM Studio, ChatGPT)
+    ERROR_MSG=$(echo "$RESPOSTA" | jq -r '.error.message' 2>/dev/null | grep -v "null")
+fi
 
 if [ "$ERROR_MSG" != "" ] && [ "$ERROR_MSG" != "null" ]; then
-    echo "Erro retornado pelo LM Studio:"
+    echo "Erro retornado pela API do '$PROVIDER':" >&2
     echo "$ERROR_MSG"
-    echo "Veja o arquivo bruto: $API_RAW"
+    echo "Veja o arquivo bruto para mais detalhes: $API_RAW" >&2
     exit 1
 fi
 
-# Extrair conteúdo principal
-CONTEUDO=$(echo "$RESPOSTA" | jq -r '.choices[0].message.content' 2>/dev/null || echo "")
+# Extrair conteúdo principal da resposta
+CONTEUDO=""
+if [ "$PROVIDER" = "gemini" ]; then
+    CONTEUDO=$(echo "$RESPOSTA" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
+else
+    # Formato OpenAI-like
+    CONTEUDO=$(echo "$RESPOSTA" | jq -r '.choices[0].message.content' 2>/dev/null)
+fi
 
 if [ -z "$CONTEUDO" ] || [ "$CONTEUDO" = "null" ]; then
-    echo "Não foi possível extrair '.choices[0].message.content'."
-    echo "Veja o JSON bruto em: $API_RAW"
+    echo "Não foi possível extrair o conteúdo da resposta da API." >&2
+    echo "Verifique o JSON bruto em: $API_RAW" >&2
     exit 1
 fi
 
@@ -185,4 +285,4 @@ echo ">> PRONTO!"
 echo "Arquivos gerados:"
 echo "  - Transcrição: $TXT_TRANSCRICAO"
 echo "  - Resumo + 10 questões: $TXT_SAIDA"
-echo "  - Resposta bruta do LM Studio: $API_RAW"
+echo "  - Resposta bruta da API: $API_RAW"
