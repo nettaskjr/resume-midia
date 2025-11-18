@@ -167,6 +167,9 @@ fi
 
 echo ">> [2/3] Configurando a geração de perguntas..."
 
+read -p "Quantos parágrafos para o resumo? (padrão: 3): " TOTAL_PARAGRAFOS
+TOTAL_PARAGRAFOS=${TOTAL_PARAGRAFOS:-3} # Se vazio, usa 3
+
 read -p "Quantas perguntas você deseja gerar? (padrão: 10): " TOTAL_QUESTOES
 TOTAL_QUESTOES=${TOTAL_QUESTOES:-10} # Se vazio, usa 10
 
@@ -181,13 +184,13 @@ SOMA_ATUAL=$((QTD_ME + QTD_VF + QTD_CL))
 DIFERENCA=$((TOTAL_QUESTOES - SOMA_ATUAL))
 QTD_ME=$((QTD_ME + DIFERENCA)) # Adiciona a diferença à categoria principal
 
-echo ">> Montando prompt com $TOTAL_QUESTOES perguntas ($QTD_ME Múltipla Escolha, $QTD_VF Verdadeiro/Falso, $QTD_CL Completar Lacuna)..."
+echo ">> Montando prompt para um resumo de $TOTAL_PARAGRAFOS parágrafos e $TOTAL_QUESTOES perguntas ($QTD_ME Múltipla Escolha, $QTD_VF Verdadeiro/Falso, $QTD_CL Completar Lacuna)"
 
 read -r -d '' PROMPT << EOP
 Você é um professor.
 Abaixo está a transcrição de um vídeo/aula.
 
-1) Primeiro, faça um RESUMO claro e objetivo do conteúdo em português (máximo de 3 parágrafos).
+1) Primeiro, faça um RESUMO claro e objetivo do conteúdo em português (máximo de $TOTAL_PARAGRAFOS parágrafos).
 
 2) Em seguida, crie AO TODO $TOTAL_QUESTOES perguntas para testar o conhecimento do aluno, obedecendo exatamente a esta distribuição:
   - $QTD_ME questões de MÚLTIPLA ESCOLHA

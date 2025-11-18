@@ -1,19 +1,25 @@
-# Resumo de Mídia com IA
+# Resumo de Mídia com IA 🤖
 
-Este script em Shell (`resume-midia.sh`) automatiza o processo de transcrever um arquivo de áudio ou vídeo, enviar a transcrição para um modelo de linguagem grande (LLM) e gerar um resumo acompanhado de um conjunto de perguntas para avaliação.
+![Linguagem](https://img.shields.io/badge/language-Shell%20Script-blue.svg?style=for-the-badge)
+![Licença](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)
+![Plataforma](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-orange.svg?style=for-the-badge)
 
-## Funcionalidades
+Este script em Shell (`resume-midia.sh`) automatiza o processo de processar um arquivo de mídia ou texto, enviar o conteúdo para um modelo de linguagem grande (LLM) e gerar um resumo acompanhado de um conjunto de perguntas para avaliação.
 
--   **Extração de Áudio**: Converte automaticamente arquivos de vídeo (mp4, mkv, etc.) ou áudio para o formato WAV, compatível com o Whisper.
--   **Transcrição Automática**: Utiliza o Whisper para gerar uma transcrição precisa do conteúdo.
--   **Suporte a Múltiplos LLMs**: Integra-se com diferentes provedores de IA:
+## ✨ Funcionalidades
+
+-   📄 **Suporte a Múltiplos Formatos**: Processa arquivos de áudio, vídeo e **texto (.txt)**.
+-   🔊 **Extração de Áudio**: Converte automaticamente arquivos de vídeo (mp4, mkv, etc.) ou áudio para o formato WAV.
+-   ✍️ **Transcrição Automática**: Utiliza o Whisper para gerar uma transcrição precisa do conteúdo de áudio/vídeo.
+-   🧠 **Suporte a Múltiplos LLMs**: Integra-se com diferentes provedores de IA:
     -   **LM Studio** (para modelos locais)
     -   **ChatGPT** (via API da OpenAI)
     -   **Gemini** (via API do Google)
--   **Geração de Conteúdo Educacional**:
+-   🎓 **Geração de Conteúdo Educacional**:
     -   Cria um resumo conciso do material.
     -   Gera um número personalizável de perguntas de múltipla escolha, verdadeiro/falso e de completar lacunas.
--   **Configuração Flexível**: Todas as chaves de API e endpoints são gerenciados através de um arquivo `config.json`, mantendo a lógica separada das credenciais.
+-   ⚙️ **Configuração Flexível**: Todas as chaves de API, modelos e endpoints são gerenciados através de um arquivo `config.json`.
+-   🔍 **Listagem de Modelos**: Permite listar os modelos disponíveis na API do Gemini para facilitar a configuração.
 
 ---
 
@@ -95,14 +101,17 @@ No `config.json`, você pode definir qual provedor será usado por padrão alter
 
 ## 3. Como Usar
 
-Com tudo configurado, execute o script passando o caminho do arquivo de mídia como argumento.
+Com tudo configurado, execute o script passando o caminho do arquivo como argumento.
 
 ```bash
 # Dê permissão de execução ao script (apenas na primeira vez)
 chmod +x resume-midia.sh
 
-# Execute o script
+# Exemplo com um arquivo de vídeo
 ./resume-midia.sh /caminho/para/sua/aula.mp4
+
+# Exemplo com um arquivo de texto (pula a transcrição)
+./resume-midia.sh meu_artigo.txt
 ```
 
 O script irá:
